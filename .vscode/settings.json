@@ -1,5 +1,7 @@
 {
   "files.watcherExclude": {
     "**/target": true
-  }
+  },
+  "metals.superMethodLensesEnabled": true,
+  "editor.formatOnSave": true
 }

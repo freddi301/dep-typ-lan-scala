@@ -1,0 +1,61 @@
+:root {
+  --background: #282c34;
+  --backgroundDark: #21252b;
+  --backgroundLight: #2c313c;
+  --backgroundHover: #292d35;
+  --backgroundFocus: #2c313a;
+  --white: #abb2bf;
+  --gray: #5c6370;
+  --blue: #61afef;
+  --red: #e06c75;
+  --yellow: #e5c07b;
+  --green: #98c379;
+  --purple: #c678dd;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/fonts/webfonts/JetBrainsMono-Regular.eot")
+      format("embedded-opentype"),
+    url("https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/fonts/webfonts/JetBrainsMono-Regular.woff2")
+      format("woff2"),
+    url("https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/fonts/webfonts/JetBrainsMono-Regular.woff")
+      format("woff"),
+    url("https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/fonts/ttf/JetBrainsMono-Regular.ttf")
+      format("truetype");
+  font-weight: normal;
+  font-style: normal;
+}
+
+* {
+  font-feature-settings: "liga" on, "calt" on;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-family: "JetBrains Mono";
+}
+
+* {
+  scrollbar-color: var(--blue) transparent;
+  scrollbar-width: 1ch;
+}
+*::-webkit-scrollbar {
+  width: 1ch;
+  height: 1ch;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--blue);
+}
+*::-webkit-scrollbar-corner {
+  color: transparent;
+}
+
+body {
+  margin: 0;
+}
+
+.main {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--backgroundDark);
+  color: var(--white);
+}
