@@ -58,4 +58,15 @@ body {
   height: 100vh;
   background-color: var(--backgroundDark);
   color: var(--white);
+  white-space: pre;
+  overflow: scroll;
+}
+
+.scroll-parent {
+  position: absolute;
+}
+
+.scroll-child {
+  position: absolute;
+  width: 100%;
 }
