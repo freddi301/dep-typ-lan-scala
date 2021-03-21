@@ -59,14 +59,33 @@ body {
   background-color: var(--backgroundDark);
   color: var(--white);
   white-space: pre;
-  overflow: scroll;
+  display: grid;
+  grid-template-columns: 300px 1fr 400px;
+  grid-template-rows: 1fr;
+}
+
+.main > .left {
+  grid-column: 1;
+}
+
+.main > .center {
+  grid-column: 2;
+}
+
+.main > .right {
+  grid-column: 3;
 }
 
 .scroll-parent {
-  position: absolute;
+  position: relative;
+  overflow: scroll;
 }
 
-.scroll-child {
+.scroll-parent > .scroll-child {
   position: absolute;
   width: 100%;
+}
+
+.computed {
+  color: var(--gray);
 }
