@@ -49,9 +49,9 @@ object HelloWorld extends {
               case core.Application(left, name, right) => left + "(" + name + " = " + right + ")"
             })
           )
-        val inferredMandatoryDesc = " " +
-          (core.infer_mandatory(identifier, Set()) -- definition.mandatory)
-            .mkString(" ")
+        val inferredMandatory = core.infer_mandatory(identifier, Set()) -- definition.mandatory
+        val inferredMandatoryDesc =
+          if (inferredMandatory.nonEmpty) " " + inferredMandatory.mkString(" ") else ""
         div(key = identifier)(
           identifier,
           mandatoryDesc,
@@ -79,25 +79,38 @@ object core {
     rhs match {
       case Universe(level) => Set()
       case Reference(identifier) =>
-        Set(identifier) ++ infer_mandatory(identifier, skip)
+        (if (hasValue(identifier)) Set() else Set(identifier)) ++ infer_mandatory(
+          identifier,
+          skip
+        )
       case Application(left, name, right) =>
-        infer_mandatory(left, skip ++ Set(name)) ++ infer_mandatory(right, skip)
+        (if (hasValue(left)) Set() else Set(left)) ++ infer_mandatory(
+          left,
+          skip ++ Set(name)
+        ) ++ (if (hasValue(right)) Set() else Set(right)) ++ infer_mandatory(
+          right,
+          skip
+        )
     }
   def infer_mandatory(identifier: Identifier, skip: Set[Identifier]): Set[Identifier] = {
-    // if (skip.contains(identifier)) return Set()
+    if (skip.contains(identifier)) return Set()
     program.get(identifier) match {
       case None => Set()
       case Some(definition) =>
+        val fromType: Set[Identifier] = definition.typ match {
+          case None      => Set()
+          case Some(typ) => Set(typ) ++ infer_mandatory(typ, skip ++ Set(identifier))
+        }
+        val fromValue: Set[Identifier] = definition.value match {
+          case None        => Set()
+          case Some(value) => infer_mandatory(value, skip ++ Set(identifier))
+        }
         val fromMandatory =
           definition.mandatory.flatMap(infer_mandatory(_, skip ++ Set(identifier)))
-        val fromValue =
-          definition.value.map(infer_mandatory(_, skip ++ Set(identifier))).getOrElse(Set())
-        val fromType = definition.typ
-          .map(infer_mandatory(_, skip ++ Set(identifier)))
-          .getOrElse(Set())
-        fromMandatory ++ fromValue ++ fromType
+        fromMandatory ++ fromType ++ fromValue
     }
   }
+  def hasValue(identifier: Identifier): Boolean = program.get(identifier).flatMap(_.value).isDefined
 
   implicit class OnIdentifier(identifier: String) {
     def t(valueIdentifier: String): (String, Definition) =
