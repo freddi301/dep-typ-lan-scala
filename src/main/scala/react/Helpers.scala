@@ -1,6 +1,7 @@
 package react
-import org.scalajs.dom
+
 import scala.scalajs.js
+import org.scalajs.dom
 import js.JSConverters._
 
 object Helpers {
@@ -43,7 +44,6 @@ object Helpers {
 
   implicit class OnComponent[T <: js.Object](function: T => ReactNode) {
     def |(props: T): ReactNode = React.createElement(function, props)
-    def inst(props: T): ReactNode = React.createElement(function, props)
   }
 
   def useState[T](initial: () => T): (T, (T => T) => Unit) = {
