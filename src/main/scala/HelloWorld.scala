@@ -1,7 +1,8 @@
 import scala.scalajs.js
 import org.scalajs.dom.document
 import scala.scalajs.js.timers.RawTimers.{clearInterval, setInterval}
-import react.{ReactDOM, ReactNode}
+import react.ReactDOM
+import react.ReactNode
 import react.Helpers._
 import core.Source
 import core.Source._
@@ -33,25 +34,25 @@ object HelloWorld {
   }
 
   def viewRaw: ReactNode =
-    div()(program.source.definitions.toSeq.map {
-      case (identifier, definition) =>
-        div(key = identifier)(
-          identifier,
-          if (definition.required.nonEmpty) " " + definition.required.mkString(" ") else "",
-          span(classes = Seq("computed"))({
-            val inferred = program.infer_mandatory(identifier, Set()) -- definition.required
-            if (inferred.nonEmpty) " " + inferred.mkString(" ") else ""
-          }),
-          definition.typ.map(" : " + _),
-          definition.value.map(value =>
-            " = " + (value match {
-              case Universe(_)                    => "type"
+    div()(
+      program.terms.values
+        .map(term =>
+          div(key = term.identifier)(
+            term.identifier,
+            if (term.definition.required.nonEmpty) " " + term.definition.required.mkString(" ") else "",
+            span(classes = Seq("computed"))(
+              if (term.implicit_required.nonEmpty) " " + term.implicit_required.mkString(" ") else ""
+            ),
+            for (typ <- term.definition.typ) yield " : " + typ,
+            for (value <- term.definition.value) yield " = " + (value match {
+              case Universe(_)                    => "*"
               case Reference(identifier)          => identifier
               case Application(left, name, right) => left + "(" + name + " = " + right + ")"
             })
           )
         )
-    }: _*)
+        .toSeq
+    )
 
   val program: Program = Program(
     Source(
