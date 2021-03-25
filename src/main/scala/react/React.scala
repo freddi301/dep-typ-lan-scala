@@ -7,9 +7,21 @@ import js.JSConverters._
 
 @js.native
 @JSGlobal
+object ReactDOM extends js.Object {
+  def render(node: ReactNode, element: dom.Element): Unit = js.native
+}
+
+@js.native
+@JSGlobal
 object React extends js.Object {
   def createElement(
       tagName: String,
+      props: js.Dictionary[js.Any],
+      children: ReactNode*
+  ): ReactNode =
+    js.native
+  def createElement(
+      tagName: js.Symbol,
       props: js.Dictionary[js.Any],
       children: ReactNode*
   ): ReactNode =
@@ -22,17 +34,15 @@ object React extends js.Object {
   def useState[T](initial: js.Function0[T]): js.Array[Any] = js.native
   def useEffect(effect: js.Function0[js.Function0[Unit]], dependencies: js.Array[Any]): Unit =
     js.native
-  def useLayoutEffect(effect: js.Function0[js.Function0[Unit]], dependencies: js.Array[Any]): Unit =
+  def useLayoutEffect(effect: js.Function0[js.Function0[Unit]], dependencies: js.Array[Any]): Unit = {
     js.native
+  }
+  val Fragment: js.Symbol = js.native
 }
 
 class ReactNode extends js.Object
-
-@js.native
-@JSGlobal
-object ReactDOM extends js.Object {
-  def render(node: ReactNode, element: dom.Element): Unit = js.native
-}
+class ReactEvent(val currentTarget: EventTarget) extends js.Object
+class EventTarget(val value: String) extends js.Object
 
 object Helpers {
 
@@ -43,7 +53,10 @@ object Helpers {
         key: String = "",
         id: String = "",
         classes: Seq[String] = Seq(),
-        onClick: dom.MouseEvent => Unit = noop
+        value: String = "",
+        `type`: String = "",
+        onClick: ReactEvent => Unit = noop,
+        onChange: ReactEvent => Unit = noop
     )(
         children: ReactNode*
     ): ReactNode = {
@@ -51,22 +64,37 @@ object Helpers {
       if (key != "") props.addOne(("key", key))
       if (id != "") props.addOne(("id", id))
       if (classes.nonEmpty) props.addOne(("className", classes.mkString(" ")))
-      if (onClick != noop) {
-        val converted: js.Function1[_, _] = onClick
-        props.addOne(("onClick", converted))
-      }
+      props.addOne(("value", value))
+      if (`type` != "") props.addOne(("type", `type`))
+      if (onClick != noop) { val converted: js.Function1[_, _] = onClick; props.addOne(("onClick", converted)) }
+      if (onChange != noop) { val converted: js.Function1[_, _] = onChange; props.addOne(("onChange", converted)) }
       React.createElement(tagName, props, children: _*)
     }
   }
 
   val div: ElementFactory = ElementFactory("div")
   val span: ElementFactory = ElementFactory("span")
+  val input: ElementFactory = ElementFactory("input")
   val button: ElementFactory = ElementFactory("button")
+  val hr: ElementFactory = ElementFactory("hr")
+
+  case class Fragment(key: String = "") {
+    def apply(children: ReactNode*): ReactNode = {
+      val props = js.Dictionary[js.Any]()
+      if (key != "") props.addOne(("key", key))
+      React.createElement(React.Fragment, props, children: _*)
+    }
+  }
 
   implicit def stringToReactNode(string: String): ReactNode = string.asInstanceOf[ReactNode]
   implicit def numberToReactNode(number: Int): ReactNode = number.asInstanceOf[ReactNode]
   implicit def booleanToReactNode(boolean: Boolean): ReactNode = boolean.asInstanceOf[ReactNode]
   implicit def stringOptionToReactNode(option: Option[String]): ReactNode =
+    option match {
+      case Some(value) => value.asInstanceOf[ReactNode]
+      case None        => ().asInstanceOf[ReactNode]
+    }
+  implicit def reactNodeOptionToReactNode(option: Option[ReactNode]): ReactNode =
     option match {
       case Some(value) => value.asInstanceOf[ReactNode]
       case None        => ().asInstanceOf[ReactNode]
@@ -91,4 +119,5 @@ object Helpers {
   def useLayoutEffect(effect: () => () => Unit, dependencies: Any*): Unit = {
     React.useEffect(() => effect(), dependencies.toJSArray)
   }
+
 }
