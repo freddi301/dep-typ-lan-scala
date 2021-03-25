@@ -19,7 +19,37 @@ object Source {
 
 }
 
-case class Source(definitions: Map[Identifier, Definition])
+case class Source(definitions: Map[Identifier, Definition]) {
+
+  val all_identifiers: Set[Identifier] = definitions.toIterable.flatMap {
+    case (identifier, definition) =>
+      Set(identifier) ++
+        definition.required ++
+        definition.typ.map(Set(_)).getOrElse(Set()) ++ definition.value
+        .map({
+          case Universe(_)                  => Set()
+          case Reference(identifier)        => Set(identifier)
+          case Application(left, on, right) => Set(left, on, right)
+        })
+        .getOrElse(Set())
+  }.toSet
+
+  def infer_source_reference_count(identifier: Identifier): Int =
+    definitions.values.foldLeft(0)((memo, definition) =>
+      memo +
+        (if (definition.required.contains(identifier)) 1 else 0) +
+        (if (definition.typ.contains(identifier)) 1 else 0) +
+        definition.value
+          .map({
+            case Universe(0)  => 0
+            case Reference(i) => if (i == identifier) 1 else 0
+            case Application(left, _, right) =>
+              (if (left == identifier) 1 else 0) + (if (right == identifier) 1 else 0)
+          })
+          .getOrElse(0)
+    )
+
+}
 
 object SourceDSL {
   implicit class OnIdentifier(identifier: String) {
