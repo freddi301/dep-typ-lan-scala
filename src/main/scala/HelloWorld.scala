@@ -3,238 +3,268 @@ import org.scalajs.dom.{console, document}
 import react.ReactDOM
 import react.ReactNode
 import react.Helpers._
-import core.{Program, Source, TermFacade}
-import core.Source._
-import core.SourceDSL._
+
+import scala.annotation.tailrec
 
 object HelloWorld {
-
   def main(args: Array[String]): Unit =
-    ReactDOM.render(App.Component | new App.Props(), document.getElementById("root"))
+    ReactDOM.render(App(new App.Props()), document.getElementById("root"))
 }
 
-object App {
+object App extends FC {
   class Props() extends js.Object
-  def Component: Props => ReactNode =
-    props => {
-      val (program, setProgram) = useState(() => sample)
-      val (focused, setFocused) = useState(() => "")
-      val (maxColumns, setMaxColumns) = useState(() => 40)
-      div(classes = Seq("main"))(
-        div(classes = Seq("left"))(),
-        div(classes = Seq("center"))(
-          viewRaw(sample),
-          hr()(),
-          viewCompact(program),
-          hr()(),
-          input(
-            value = focused,
-            onChange = event => { val text = event.currentTarget.value; setFocused(_ => text) }
-          )(),
-          viewRaw(sample.focus(focused)),
-          hr()(),
+  def render(props: Props): ReactNode = {
+    val (maxColumns, setMaxColumns) = useState(() => 40)
+    div(classes = Seq("main"))(
+      div(classes = Seq("left"))(),
+      div(classes = Seq("center scroll-parent"))(
+        div(classes = Seq("scroll-child"))(
           input(
             `type` = "number",
             value = maxColumns.toString,
-            onChange = event => { val value = event.currentTarget.value; setMaxColumns(_ => value.toInt) }
+            onChange = event => { val maxColumns = event.currentTarget.value.toInt; setMaxColumns(_ => maxColumns) }
           )(),
-          viewFormatted(maxColumns)
-        ),
-        div(classes = Seq("right"))()
-      )
-    }
-
-  def viewRaw(program: Program): ReactNode =
-    Fragment()(
-      program.terms.values
-        .map(term =>
-          div(key = term.identifier)(
-            span(classes = Seq("computed"))(term.source_reference_count + " "),
-            term.identifier,
-            if (term.definition.required.nonEmpty) " (" + term.definition.required.mkString(" ") + ")" else "",
-            if (term.implicit_required.nonEmpty) " {" + term.implicit_required.mkString(" ") + "}" else "",
-            for (typ <- term.definition.typ) yield " : " + typ,
-            for (value <- term.definition.value) yield " = " + (value match {
-              case Universe(_)                    => "*"
-              case Reference(identifier)          => identifier
-              case Application(left, name, right) => left + "(" + name + " = " + right + ")"
-            })
-          )
+          // FormattingSample.viewFormatted(maxColumns),
+          renderWriter(format(maxColumns))
         )
-        .toSeq
-    )
-
-  def viewCompact(program: Program): ReactNode = {
-    def viewRhsIdentifier(identifier: Identifier): ReactNode =
-      program.terms.get(identifier) match {
-        case None => identifier
-        case Some(term) =>
-          val should_inline = term.source_reference_count == 1
-          if (should_inline) term.definition.value match {
-            case None        => identifier
-            case Some(value) => viewRhsValue(value)
-          }
-          else identifier
-      }
-    def viewRhsValue(value: RightHandSide): ReactNode =
-      value match {
-        case Universe(_)           => "*"
-        case Reference(identifier) => viewRhsIdentifier(identifier)
-        case Application(left, on, right) =>
-          Fragment()(viewRhsIdentifier(left), "(", on, " = ", viewRhsIdentifier(right), ")")
-      }
-    def viewLhsIdentifier(identifier: Identifier, braces: (String, String)): ReactNode = {
-      val (lb, rb) = braces
-      (for (
-        term <- program.terms.get(identifier);
-        typ <- term.definition.typ if term.source_reference_count == 1
-      ) yield Fragment()(lb, identifier, " : ", viewRhsIdentifier(typ), rb))
-        .getOrElse(Fragment()(lb, identifier, rb))
-    }
-
-    Fragment()(
-      program.terms.values
-        .filter(term => term.source_reference_count != 1)
-        .map(term =>
-          div(key = term.identifier)(
-            span(classes = Seq("computed"))(term.source_reference_count + " "),
-            term.identifier,
-            " ",
-            if (term.definition.required.nonEmpty)
-              Fragment()(
-                term.definition.required.toSeq
-                  .map(required => Fragment(key = required)(viewLhsIdentifier(required, ("(", ")")), " "))
-              )
-            else Fragment()(),
-            if (term.implicit_required.nonEmpty)
-              Fragment()(
-                term.implicit_required.toSeq
-                  .map(required => Fragment(key = required)(viewLhsIdentifier(required, ("{", "}")), " "))
-              )
-            else Fragment()(),
-            for (typ <- term.definition.typ) yield Fragment()(": ", viewLhsIdentifier(typ, ("", ""))),
-            for (value <- term.definition.value) yield Fragment()("= ", viewRhsValue(value))
-          )
-        )
-        .toSeq
+      ),
+      div(classes = Seq("right"))()
     )
   }
 
-  val sample: Program = Program(
-    Source(
+  case class RichString(text: String) extends CharacterSequence {
+    val length: Int = text.length
+  }
+
+  val formatting: Formatting[RichString] = new Formatting[RichString]
+
+  def format(maxColumns: Int): formatting.Writer =
+    formatting.Format(maxColumns = maxColumns, indentation = RichString("  ")).multiline(formatAbleSource)
+
+  def renderWriter(writer: formatting.Writer): ReactNode =
+    for ((line, lineIndex) <- writer.lines.zipWithIndex)
+      yield div(key = lineIndex.toString)(
+        for ((word, wordIndex) <- line.zipWithIndex)
+          yield span(key = wordIndex.toString)(word.text)
+      )
+
+  def formatAbleSource: formatting.Token = {
+    import Source._
+    import formatting._
+    val TODO = One(RichString("???"))
+    def termToToken(term: Term, parens: Boolean): Token =
+      term match {
+        case Universe(level)       => One(RichString("type"))
+        case Reference(identifier) => One(RichString(identifier))
+        case Pi(_, _, _) =>
+          @tailrec
+          def collect(collected: Seq[(Identifier, Term)], term: Term): (Seq[(Identifier, Term)], Term) =
+            term match {
+              case Pi(head, from, to) => collect(collected.appended((head, from)), to)
+              case term               => (collected, term)
+            }
+          val (froms, to) = collect(Seq(), term)
+          Many(
+            froms
+              .map({
+                case (head, from) =>
+                  if (head == "") termToToken(from, parens = true)
+                  else
+                    Pair(
+                      (RichString(head), termToToken(from, parens = false)),
+                      RichString(" : "),
+                      RichString("("),
+                      RichString(")")
+                    )
+              })
+              .appended(termToToken(to, parens = false)),
+            RichString(" -> "),
+            RichString(if (parens) "(" else ""),
+            RichString(if (parens) ")" else ""),
+            trailingSeparator = false,
+            isMulti = true
+          )
+        case Lambda(head, from, to, body) =>
+          @tailrec
+          def collect(collected: Seq[(Identifier, Term)], term: Term): (Seq[(Identifier, Term)], Term) =
+            term match {
+              case Lambda(head, from, to, body) => collect(collected.appended((head, from)), body)
+              case term                         => (collected, term)
+            }
+          val (froms, body) = collect(Seq(), term)
+          Many(
+            froms
+              .map({
+                case (head, from) =>
+                  from match {
+                    case Infer() => One(RichString(head))
+                    case _ =>
+                      Pair(
+                        (RichString(head), termToToken(from, parens = false)),
+                        RichString(" : "),
+                        RichString("("),
+                        RichString(")")
+                      )
+                  }
+              })
+              .appended(termToToken(body, parens = false)),
+            RichString(" => "),
+            RichString(if (parens) "(" else ""),
+            RichString(if (parens) ")" else ""),
+            trailingSeparator = false,
+            isMulti = true
+          )
+        case Application(left, right) =>
+          Many(
+            Seq(
+              termToToken(
+                left,
+                parens = left match {
+                  case Application(_, _) => false
+                  case _                 => true
+                }
+              ),
+              termToToken(right, parens = true)
+            ),
+            RichString(" "),
+            RichString(if (parens) "(" else ""),
+            RichString(if (parens) ")" else ""),
+            trailingSeparator = false
+          )
+        case Let(head, type_, value, in) => TODO
+        case Interface(attributes) =>
+          Many(
+            (for ((attribute, type_) <- attributes)
+              yield Pair(
+                (RichString(attribute), termToToken(type_, parens = false)),
+                RichString(" : "),
+                RichString(""),
+                RichString(" ")
+              )).toSeq,
+            RichString("; "),
+            RichString("{ "),
+            RichString("}"),
+            isMulti = true
+          )
+        case Implementation(attributes) =>
+          Many(
+            (for ((attribute, type_) <- attributes)
+              yield Pair(
+                (RichString(attribute), termToToken(type_, parens = false)),
+                RichString(" = "),
+                RichString(""),
+                RichString(" ")
+              )).toSeq,
+            RichString(", "),
+            RichString("{ "),
+            RichString("}"),
+            isMulti = true
+          )
+        case Projection(record, attribute) => TODO
+        case Undefined()                   => One(RichString("?"))
+        case Hole(identifier)              => One(RichString("?" + identifier))
+        case Infer()                       => One(RichString("_"))
+        case Ascription(value, type_)      => TODO
+      }
+    Many(
+      (for ((entry, definition) <- source.entries) yield (definition match {
+        case Data(type_) =>
+          Seq(
+            Pair(
+              (RichString(entry), termToToken(type_, parens = false)),
+              RichString(" : "),
+              RichString(""),
+              RichString("")
+            )
+          )
+        case Value(type_, value) =>
+          Seq(
+            Pair(
+              (RichString(entry), termToToken(type_, parens = false)),
+              RichString(" : "),
+              RichString(""),
+              RichString("")
+            ),
+            Pair(
+              (RichString(entry), termToToken(value, parens = false)),
+              RichString(" = "),
+              RichString(""),
+              RichString("")
+            )
+          )
+      })).flatten.toSeq,
+      RichString(""),
+      RichString(""),
+      RichString("")
+    )
+  }
+
+  val source: Source.Program = {
+    import Source._
+    Program(
       Map(
-        "type".u(0),
-        "n".t("type"),
-        "z".t("n"),
-        "p".t("n"),
-        "s".req("p").t("n"),
-        "0".v("z"),
-        "1".v("s".a("p" -> "0")),
-        "2".v("s".a("p" -> "1")),
-        "x".t("n"),
-        "inc".v("s".a("p" -> "x"))
+        "boolean" -> Data(Universe(0)),
+        "true" -> Data(Reference("boolean")),
+        "false" -> Data(Reference("boolean")),
+        "not" -> Value(Pi("", Reference("boolean"), Reference("boolean")), Undefined()),
+        "and" -> Value(Pi("", Reference("boolean"), Pi("", Reference("boolean"), Reference("boolean"))), Undefined()),
+        "or" -> Value(Pi("", Reference("boolean"), Pi("", Reference("boolean"), Reference("boolean"))), Undefined()),
+        "nand" -> Value(
+          Infer(),
+          Lambda(
+            "x",
+            Infer(),
+            Infer(),
+            Lambda(
+              "y",
+              Infer(),
+              Infer(),
+              Application(Reference("not"), Application(Application(Reference("and"), Reference("x")), Reference("y")))
+            )
+          )
+        ),
+        "functor" -> Value(
+          Infer(),
+          Lambda(
+            "f",
+            Pi("", Universe(0), Universe(0)),
+            Infer(),
+            Interface(
+              Map(
+                "map" -> Pi(
+                  "",
+                  Pi("", Reference("a"), Reference("b")),
+                  Pi("", Application(Reference("f"), Reference("a")), Application(Reference("f"), Reference("b")))
+                ),
+                "flatMap" -> Pi(
+                  "",
+                  Pi("", Reference("a"), Application(Reference("f"), Reference("b"))),
+                  Pi("", Application(Reference("f"), Reference("a")), Application(Reference("f"), Reference("b")))
+                )
+              )
+            )
+          )
+        ),
+        "maybe" -> Data(Pi("", Universe(0), Universe(0))),
+        "none" -> Data(Application(Reference("maybe"), Reference("t"))),
+        "some" -> Data(Pi("", Reference("t"), Application(Reference("maybe"), Reference("t")))),
+        "maybe_functor" -> Value(
+          Application(Reference("functor"), Reference("maybe")),
+          Implementation(
+            Map(
+              "map" -> Undefined()
+            )
+          )
+        )
       )
     )
-  )
-
-  def viewFormatted(maxColumns: Int): ReactNode =
-    div()(
-      formatted(maxColumns).lines.map(line => div()(line.map(word => span()(word.mkString))))
-    )
-
-  val formatting = new Formatting[Char]
-  val formattingSample: formatting.Term = {
-    import formatting.{Word, One, Many, Term}
-    implicit def stringToWord(string: String): Term = One(string.toCharArray.toSeq)
-    def app(terms: Term*): Term = Many(terms, ", ", "(", ")")
-
-    app(
-      app("a", "b", "c"),
-      app("aaaaaaaaaa", "bbbbbbbbbb", "cccccccccc"),
-      app("a", "b", "c"),
-      app("aaaaaaaaaa", "bbbbbbbbbb", "cccccccccc")
-    )
-
-  }
-  def formatted(maxColumns: Int): formatting.Writer = formatting.LevelFormat(maxColumns, "  ")(formattingSample)
-}
-
-class Formatting[Character] {
-
-  type Word = Seq[Character]
-
-  sealed trait Term {
-    val inlineLength: Int = this match {
-      case One(word) => word.length
-      case Many(terms, separator, open, close) =>
-        open.length + terms.map(term => term.inlineLength + separator.length).sum + close.length
-    }
-  }
-  case class One(word: Word) extends Term
-  case class Many(terms: Seq[Term], separator: Word, open: Word, close: Word) extends Term
-
-  case class Writer(lines: Seq[Seq[Word]], currentColumn: Int) {
-    def write(word: Word): Writer =
-      Writer(
-        currentColumn = this.currentColumn + word.length,
-        lines = lines.slice(0, lines.length - 1).appended(lines.last.appended(word))
-      )
-    def endLine(): Writer =
-      Writer(currentColumn = 0, lines = lines.appended(Seq()))
-  }
-  object Writer {
-    def empty: Writer = Writer(currentColumn = 0, lines = Seq(Seq()))
   }
 
-  case class LevelFormat(maxColumns: Int, indentation: Word) {
-    def formatInline(writer: Writer, term: Term): Writer =
-      term match {
-        case One(word) => writer.write(word)
-        case Many(terms, separator, open, close) =>
-          terms.foldLeft(writer.write(open))((w, i) => formatInline(w, i).write(separator)).write(close)
-      }
-    implicit class OnWriter(writer: Writer) {
-      def indent(level: Int): Writer = Seq.fill(level)(indentation).foldLeft(writer)((w, i) => w.write(i))
-    }
-    def formatMultiline(writer: Writer, term: Term, level: Int): Writer =
-      term match {
-        case One(word) => writer.write(word)
-        case Many(terms, separator, open, close) =>
-          terms
-            .foldLeft(writer.write(open))((w, i) => {
-              format(w.endLine().indent(level), i, level).write(separator)
-            })
-            .endLine()
-            .indent(level - 1)
-            .write(close)
-      }
-    def format(writer: Writer, term: Term, level: Int): Writer = {
-      term match {
-        case One(word) => writer.write(word)
-        case Many(terms, separator, open, close) =>
-          terms
-            .foldLeft(writer.write(open))((w, i) => {
-              val remainingColumns = maxColumns - w.currentColumn
-              if (i.inlineLength <= remainingColumns) formatInline(w, i).write(separator)
-              else formatMultiline(w, i, level + 1).write(separator)
-            })
-            .write(close)
-      }
-    }
-    def apply(term: Term): Writer = format(writer = Writer.empty, term = term, level = 0)
-  }
 }
 
 /*
 
-(a, b, c), (
-  aaaaaaaaaaaaa,
-  bbbbbbbbbbbbb,
-  ccccccccccccc,
-), (a, b, c), (
-  aaaaaaaaaaaaa,
-  bbbbbbbbbbbbb,
-  ccccccccccccc,
-),
+
+
 
  */

@@ -77,6 +77,10 @@ object Helpers {
   val input: ElementFactory = ElementFactory("input")
   val button: ElementFactory = ElementFactory("button")
   val hr: ElementFactory = ElementFactory("hr")
+  val h1: ElementFactory = ElementFactory("h1")
+  val h2: ElementFactory = ElementFactory("h2")
+  val h3: ElementFactory = ElementFactory("h3")
+  val h4: ElementFactory = ElementFactory("h4")
 
   case class Fragment(key: String = "") {
     def apply(children: ReactNode*): ReactNode = {
@@ -100,9 +104,17 @@ object Helpers {
       case None        => ().asInstanceOf[ReactNode]
     }
   implicit def nodeSeqToReactNode(seq: Seq[ReactNode]): ReactNode = seq.toJSArray.asInstanceOf[ReactNode]
+  implicit def nodeIterableToReactNode(iterable: Iterable[ReactNode]): ReactNode =
+    iterable.toSeq.toJSArray.asInstanceOf[ReactNode]
+
+  trait FC {
+    type Props <: js.Object
+    def render(props: Props): ReactNode
+    def apply(props: Props): ReactNode = React.createElement(render _, props)
+  }
 
   implicit class OnFunctionalComponent[T <: js.Object](function: T => ReactNode) {
-    def |(props: T): ReactNode = React.createElement(function, props)
+    def inst(props: T): ReactNode = React.createElement(function, props)
   }
 
   def useState[T](initial: () => T): (T, (T => T) => Unit) = {
