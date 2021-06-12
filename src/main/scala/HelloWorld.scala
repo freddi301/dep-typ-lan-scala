@@ -4,8 +4,6 @@ import react.ReactDOM
 import react.ReactNode
 import react.Helpers._
 
-import scala.annotation.tailrec
-
 object HelloWorld {
   def main(args: Array[String]): Unit =
     ReactDOM.render(App(new App.Props()), document.getElementById("root"))
@@ -23,14 +21,15 @@ object App extends FC {
             `type` = "number",
             value = maxColumns.toString,
             onChange = event => { val maxColumns = event.currentTarget.value.toInt; setMaxColumns(_ => maxColumns) }
-          )(),
+          )()
           // FormattingSample.viewFormatted(maxColumns),
-          renderWriter(format(maxColumns))
+          //renderWriter(format(maxColumns))
         )
       ),
       div(classes = Seq("right"))()
     )
   }
+  /*
 
   case class RichString(text: String) extends CharacterSequence {
     val length: Int = text.length
@@ -51,69 +50,10 @@ object App extends FC {
   def formatAbleSource: formatting.Token = {
     import Source._
     import formatting._
-    val TODO = One(RichString("???"))
     def termToToken(term: Term, parens: Boolean): Token =
       term match {
-        case Universe(level)       => One(RichString("type"))
+        case Universe(level)       => One(RichString("type " + level))
         case Reference(identifier) => One(RichString(identifier))
-        case Pi(_, _, _) =>
-          @tailrec
-          def collect(collected: Seq[(Identifier, Term)], term: Term): (Seq[(Identifier, Term)], Term) =
-            term match {
-              case Pi(head, from, to) => collect(collected.appended((head, from)), to)
-              case term               => (collected, term)
-            }
-          val (froms, to) = collect(Seq(), term)
-          Many(
-            froms
-              .map({
-                case (head, from) =>
-                  if (head == "") termToToken(from, parens = true)
-                  else
-                    Pair(
-                      (RichString(head), termToToken(from, parens = false)),
-                      RichString(" : "),
-                      RichString("("),
-                      RichString(")")
-                    )
-              })
-              .appended(termToToken(to, parens = false)),
-            RichString(" -> "),
-            RichString(if (parens) "(" else ""),
-            RichString(if (parens) ")" else ""),
-            trailingSeparator = false,
-            isMulti = true
-          )
-        case Lambda(head, from, to, body) =>
-          @tailrec
-          def collect(collected: Seq[(Identifier, Term)], term: Term): (Seq[(Identifier, Term)], Term) =
-            term match {
-              case Lambda(head, from, to, body) => collect(collected.appended((head, from)), body)
-              case term                         => (collected, term)
-            }
-          val (froms, body) = collect(Seq(), term)
-          Many(
-            froms
-              .map({
-                case (head, from) =>
-                  from match {
-                    case Infer() => One(RichString(head))
-                    case _ =>
-                      Pair(
-                        (RichString(head), termToToken(from, parens = false)),
-                        RichString(" : "),
-                        RichString("("),
-                        RichString(")")
-                      )
-                  }
-              })
-              .appended(termToToken(body, parens = false)),
-            RichString(" => "),
-            RichString(if (parens) "(" else ""),
-            RichString(if (parens) ")" else ""),
-            trailingSeparator = false,
-            isMulti = true
-          )
         case Application(left, right) =>
           Many(
             Seq(
@@ -131,140 +71,123 @@ object App extends FC {
             RichString(if (parens) ")" else ""),
             trailingSeparator = false
           )
-        case Let(head, type_, value, in) => TODO
-        case Interface(attributes) =>
+        case Block(attributes) =>
           Many(
-            (for ((attribute, type_) <- attributes)
-              yield Pair(
-                (RichString(attribute), termToToken(type_, parens = false)),
-                RichString(" : "),
-                RichString(""),
-                RichString(" ")
-              )).toSeq,
-            RichString("; "),
-            RichString("{ "),
-            RichString("}"),
-            isMulti = true
-          )
-        case Implementation(attributes) =>
-          Many(
-            (for ((attribute, type_) <- attributes)
-              yield Pair(
-                (RichString(attribute), termToToken(type_, parens = false)),
-                RichString(" = "),
-                RichString(""),
-                RichString(" ")
-              )).toSeq,
+            (for ((attribute, entry) <- attributes)
+              yield entry match {
+                case Data(type_) =>
+                  Seq(
+                    Pair(
+                      (RichString(attribute), termToToken(type_, parens = false)),
+                      RichString(" : "),
+                      RichString(""),
+                      RichString(" ")
+                    )
+                  )
+                case Parameter(type_) =>
+                  Seq(
+                    Pair(
+                      (RichString(attribute), termToToken(type_, parens = false)),
+                      RichString(" : "),
+                      RichString(""),
+                      RichString(" ")
+                    )
+                  )
+                case Value(type_, value) =>
+                  Seq(
+                    Pair(
+                      (RichString(attribute), termToToken(type_, parens = false)),
+                      RichString(" : "),
+                      RichString(""),
+                      RichString(" ")
+                    ),
+                    Pair(
+                      (RichString(attribute), termToToken(value, parens = false)),
+                      RichString(" = "),
+                      RichString(""),
+                      RichString(" ")
+                    )
+                  )
+              }).flatten.toSeq,
             RichString(", "),
-            RichString("{ "),
-            RichString("}"),
+            RichString("("),
+            RichString(")"),
             isMulti = true
           )
-        case Projection(record, attribute) => TODO
-        case Undefined()                   => One(RichString("?"))
-        case Hole(identifier)              => One(RichString("?" + identifier))
-        case Infer()                       => One(RichString("_"))
-        case Ascription(value, type_)      => TODO
+        case Projection(block, attribute) =>
+          Many(
+            Seq(termToToken(block, parens = true), One(RichString(attribute))),
+            RichString(" . "),
+            RichString("("),
+            RichString(")"),
+            trailingSeparator = false
+          )
+        case Undefined() => One(RichString("?"))
+        case Infer()     => One(RichString("_"))
       }
-    Many(
-      (for ((entry, definition) <- source.entries) yield (definition match {
-        case Data(type_) =>
-          Seq(
-            Pair(
-              (RichString(entry), termToToken(type_, parens = false)),
-              RichString(" : "),
-              RichString(""),
-              RichString("")
-            )
-          )
-        case Value(type_, value) =>
-          Seq(
-            Pair(
-              (RichString(entry), termToToken(type_, parens = false)),
-              RichString(" : "),
-              RichString(""),
-              RichString("")
-            ),
-            Pair(
-              (RichString(entry), termToToken(value, parens = false)),
-              RichString(" = "),
-              RichString(""),
-              RichString("")
-            )
-          )
-      })).flatten.toSeq,
-      RichString(""),
-      RichString(""),
-      RichString("")
-    )
+    termToToken(source, parens = false)
   }
+   */
 
-  val source: Source.Program = {
+  val source: Unit = {
     import Source._
-    Program(
-      Map(
-        "boolean" -> Data(Universe(0)),
-        "true" -> Data(Reference("boolean")),
-        "false" -> Data(Reference("boolean")),
-        "not" -> Value(Pi("", Reference("boolean"), Reference("boolean")), Undefined()),
-        "and" -> Value(Pi("", Reference("boolean"), Pi("", Reference("boolean"), Reference("boolean"))), Undefined()),
-        "or" -> Value(Pi("", Reference("boolean"), Pi("", Reference("boolean"), Reference("boolean"))), Undefined()),
-        "nand" -> Value(
-          Infer(),
-          Lambda(
-            "x",
-            Infer(),
-            Infer(),
-            Lambda(
-              "y",
-              Infer(),
-              Infer(),
-              Application(Reference("not"), Application(Application(Reference("and"), Reference("x")), Reference("y")))
-            )
-          )
-        ),
-        "functor" -> Value(
-          Infer(),
-          Lambda(
-            "f",
-            Pi("", Universe(0), Universe(0)),
-            Infer(),
-            Interface(
-              Map(
-                "map" -> Pi(
-                  "",
-                  Pi("", Reference("a"), Reference("b")),
-                  Pi("", Application(Reference("f"), Reference("a")), Application(Reference("f"), Reference("b")))
-                ),
-                "flatMap" -> Pi(
-                  "",
-                  Pi("", Reference("a"), Application(Reference("f"), Reference("b"))),
-                  Pi("", Application(Reference("f"), Reference("a")), Application(Reference("f"), Reference("b")))
-                )
-              )
-            )
-          )
-        ),
-        "maybe" -> Data(Pi("", Universe(0), Universe(0))),
-        "none" -> Data(Application(Reference("maybe"), Reference("t"))),
-        "some" -> Data(Pi("", Reference("t"), Application(Reference("maybe"), Reference("t")))),
-        "maybe_functor" -> Value(
-          Application(Reference("functor"), Reference("maybe")),
-          Implementation(
-            Map(
-              "map" -> Undefined()
-            )
-          )
-        )
-      )
-    )
+//    Block(
+//      Map(
+//        "boolean" -> Data(Universe(0)),
+//        "true" -> Data(Reference("boolean")),
+//        "false" -> Data(Reference("boolean"))
+//        "not" -> Value(Pi("", Reference("boolean"), Reference("boolean")), Undefined()),
+//        "and" -> Value(Pi("", Reference("boolean"), Pi("", Reference("boolean"), Reference("boolean"))), Undefined()),
+//        "or" -> Value(Pi("", Reference("boolean"), Pi("", Reference("boolean"), Reference("boolean"))), Undefined()),
+//        "nand" -> Value(
+//          Infer(),
+//          Lambda(
+//            "x",
+//            Infer(),
+//            Infer(),
+//            Lambda(
+//              "y",
+//              Infer(),
+//              Infer(),
+//              Application(Reference("not"), Application(Application(Reference("and"), Reference("x")), Reference("y")))
+//            )
+//          )
+//        ),
+//        "functor" -> Value(
+//          Infer(),
+//          Lambda(
+//            "f",
+//            Pi("", Universe(0), Universe(0)),
+//            Infer(),
+//            Interface(
+//              Map(
+//                "map" -> Pi(
+//                  "",
+//                  Pi("", Reference("a"), Reference("b")),
+//                  Pi("", Application(Reference("f"), Reference("a")), Application(Reference("f"), Reference("b")))
+//                ),
+//                "flatMap" -> Pi(
+//                  "",
+//                  Pi("", Reference("a"), Application(Reference("f"), Reference("b"))),
+//                  Pi("", Application(Reference("f"), Reference("a")), Application(Reference("f"), Reference("b")))
+//                )
+//              )
+//            )
+//          )
+//        ),
+//        "maybe" -> Data(Pi("", Universe(0), Universe(0))),
+//        "none" -> Data(Application(Reference("maybe"), Reference("t"))),
+//        "some" -> Data(Pi("", Reference("t"), Application(Reference("maybe"), Reference("t")))),
+//        "maybe_functor" -> Value(
+//          Application(Reference("functor"), Reference("maybe")),
+//          Implementation(
+//            Map(
+//              "map" -> Undefined()
+//            )
+//          )
+//        )
+//      )
+//    )
   }
 
 }
-
-/*
-
-
-
-
- */
