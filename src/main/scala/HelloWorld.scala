@@ -164,7 +164,7 @@ object App extends FC {
         case Undefined()                   => One(RichString("?"))
         case Hole(identifier)              => One(RichString("?" + identifier))
         case Infer()                       => One(RichString("_"))
-        case Ascription(value, type_)      => TODO
+        // case Ascription(value, type_)      => TODO
       }
     Many(
       (for ((entry, definition) <- source.entries) yield (definition match {
